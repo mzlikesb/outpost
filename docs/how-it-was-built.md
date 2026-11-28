@@ -59,7 +59,7 @@ Preview 배포는 PR마다 자동으로 만들어지고 PR이 닫히면 삭제�
 
 ## 측정한다
 
-PR별 단계 소요 시간, 작업량, 사람을 기다린 시간, 토큰 사용량을 스크립트로 집계해 회고에 적는다(`scripts/pr-stats.sh`, `scripts/pr-tokens.sh`).
+PR별 단계 소요 시간, 작업량, 사람을 기다린 시간을 스크립트로 집계해 회고에 적는다(`scripts/pr-stats.sh`). 토큰 집계(`scripts/pr-tokens.sh`)는 회고 칸을 폐지하고 수동으로만 쓴다.
 
 커밋 타입 분포는 직접 뽑을 수 있다.
 

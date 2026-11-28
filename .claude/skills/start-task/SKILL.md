@@ -30,6 +30,7 @@ git push -u origin <브랜치>
 
 ### large
 
+0. 비주얼 방향이나 새 상호작용처럼 감각으로 정해야 하면, 플랜 전에 비교용 draft PR(쿼리 스위치 등, 머지 안 함)로 사용자에게 먼저 보여 방향을 정한다. 결정 뒤 비교 PR은 닫는다(AGENTS.md 워크플로우).
 1. `docs/templates/plan.md`로 `docs/plans/NNN-*.md`를 쓴다. 플랜에는 **목표 상태만** 쓴다(세션 경위·파일 출처 메모 금지).
 2. draft PR을 연다: 라벨 `size:large` + `stage:plan-review`, 마일스톤, 본문 `관련 이슈`와 플랜 링크.
 3. neon은 push 직후 훅이 자동으로 돌린다. 직접 부르지 않는다. 결과는 PR 본문 `리뷰 기록` 표에 적는다.
@@ -53,3 +54,5 @@ git push -u origin <브랜치>
 ## 5. 감시
 
 PR을 연 직후 Monitor 도구로 `scripts/watch-pr.sh N 60`을 띄운다(N은 PR 번호). 새 코멘트·리뷰가 알림으로 온다. AI 리뷰는 바로 반영하고 사용자 코멘트는 정리만 한다(`CLAUDE.md`의 "PR 감시와 리뷰 반영").
+
+머지 뒤 worktree·브랜치 정리는 `retro` 스킬 4단계에서 한다.
