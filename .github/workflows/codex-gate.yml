@@ -2,15 +2,17 @@ name: codex-gate
 
 # Sets the `codex-reviewed` commit status on a PR's current head: success only when
 # Codex reviewed exactly that commit, pending otherwise. Branch protection requires it,
-# so an Approve that lands before Codex cannot merge the PR.
+# so an Approve that lands before Codex cannot merge the PR. PRs into `dev` (no required
+# Approve) get `codex-reviewed-dev` instead: a clean latest Codex review or the user's Approve
+# (plan 010 B2). A base change (edited) posts the new base's context.
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   issue_comment:
     types: [created, edited]
   pull_request_review:
-    types: [submitted]
+    types: [submitted, dismissed]
 
 permissions:
   statuses: write
@@ -46,18 +48,23 @@ jobs:
         run: |
           set -euo pipefail
           # Read the current head; the event payload may be stale.
-          head=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          gh api "repos/$REPO/pulls/$PR" > pr.json
+          head=$(jq -r .head.sha pr.json)
+          base=$(jq -r .base.ref pr.json)
           gh api --paginate "repos/$REPO/issues/$PR/comments?per_page=100" | jq -s 'add // []' > comments.json
           gh api --paginate "repos/$REPO/pulls/$PR/reviews?per_page=100" | jq -s 'add // []' > reviews.json
+          gh api --paginate "repos/$REPO/pulls/$PR/comments?per_page=100" | jq -s 'add // []' > review-comments.json
           if [ ! -f scripts/codex-gate.sh ]; then
             # Before this workflow's first merge the default branch has no script.
             verdict='{"state":"pending","description":"판정 스크립트가 아직 기본 브랜치에 없음 (머지 후 동작)"}'
           else
-            verdict=$(bash scripts/codex-gate.sh "$head" comments.json reviews.json)
+            verdict=$(bash scripts/codex-gate.sh "$head" comments.json reviews.json "$base" review-comments.json)
           fi
           echo "$verdict"
+          # Base dev posts its own context (codex-reviewed-dev) so a same-SHA PR with another
+          # base cannot overwrite it. An older judge without .context means codex-reviewed.
           gh api -X POST "repos/$REPO/statuses/$head" \
-            -f context=codex-reviewed \
+            -f context="$(jq -r '.context // "codex-reviewed"' <<<"$verdict")" \
             -f state="$(jq -r .state <<<"$verdict")" \
             -f description="$(jq -r .description <<<"$verdict")" \
             -f target_url="${GITHUB_SERVER_URL}/${REPO}/pull/${PR}"

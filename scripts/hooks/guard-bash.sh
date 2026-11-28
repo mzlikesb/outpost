@@ -103,14 +103,14 @@ if [ -n "$push_segments" ]; then
   if grep -qE '(\s-[a-zA-Z]*f[a-zA-Z]*(\s|$)|--force\b|--force-with-lease|\s\+[^ ]+)' <<<"$push_segments"; then
     block "force push 금지."
   fi
-  if grep -qE '(\smain|:main|:refs/heads/main)(\s|$)' <<<"$push_segments"; then
-    block "main으로 직접 push 금지. PR로 머지한다."
+  if grep -qE '(\s|:|:refs/heads/)(main|dev)(\s|$)' <<<"$push_segments"; then
+    block "main·dev로 직접 push 금지. PR로 머지한다."
   fi
 fi
 
 d=$(dir_for "$cwd" "$cmd" "^\s*${git_opt}\s+(commit|push)\b")
-if [ -n "$d" ] && repo_info "$d" && [ "$branch" = main ]; then
-  block "main 브랜치에서 commit/push 금지. 작업 브랜치(worktree)에서 한다."
+if [ -n "$d" ] && repo_info "$d" && { [ "$branch" = main ] || [ "$branch" = dev ]; }; then
+  block "main·dev 브랜치에서 commit/push 금지. 작업 브랜치(worktree)에서 한다."
 fi
 
 # Switching branches in the main checkout. File restores (`git checkout -- path`) are fine.

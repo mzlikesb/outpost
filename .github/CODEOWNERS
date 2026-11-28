@@ -1,0 +1,20 @@
+# Paths whose changes need the code owner's Approve, even into `dev` (0 required approvals).
+# Same list as AGENTS.md "보호 경로 (CODEOWNERS)"; scripts/codeowners.test.sh compares them.
+/.github/ @mzlikesb
+/scripts/ @mzlikesb
+/AGENTS.md @mzlikesb
+/CLAUDE.md @mzlikesb
+/GEMINI.md @mzlikesb
+/.claude/ @mzlikesb
+/docs/templates/ @mzlikesb
+/wrangler.* @mzlikesb
+/package.json @mzlikesb
+/package-lock.json @mzlikesb
+/.nvmrc @mzlikesb
+/tsconfig*.json @mzlikesb
+/vite.config.* @mzlikesb
+/vitest.config.* @mzlikesb
+/vitest.workspace.* @mzlikesb
+**/.oxlintrc* @mzlikesb
+**/.prettierrc* @mzlikesb
+**/.prettierignore @mzlikesb

@@ -151,6 +151,13 @@ expect 2 "$main_dir" "git push -uf origin feat/x"
 expect 2 "$main_dir" "git push origin HEAD:main"
 expect 2 "$main_dir" "git push origin HEAD:refs/heads/main"
 expect 0 "$main_dir" "git push origin main-xyz"
+# dev (integration branch) is guarded like main.
+expect 2 "$main_dir" "git push origin dev"
+expect 2 "$main_dir" "git push origin HEAD:dev"
+expect 2 "$main_dir" "git push origin HEAD:refs/heads/dev"
+expect 2 "$main_dir" "git push -u origin main:dev"
+expect 0 "$main_dir" "git push origin dev-xyz"
+expect 0 "$main_dir" "git push origin chore/010-dev-branch"
 expect 0 "$main_dir" "git push --follow-tags origin feat/x"
 expect 0 "$main_dir" "git commit -m 'catch -uf pushes to main' && git push -q"
 expect 2 "$main_dir" "git add . && git push -f"
@@ -169,6 +176,14 @@ expect 2 "$wt" "git commit -m x"
 expect 2 "$wt" "git push"
 expect 0 "$wt" "git switch -c feat/y"
 expect 0 "$wt" "git checkout feat/y"
+
+# Worktree on dev: same as main.
+git -C "$main_dir" branch -q dev main
+devwt="$tmp/devwt"
+git -C "$main_dir" worktree add -q "$devwt" dev
+devwt=$(cd "$devwt" && pwd -P)
+expect 2 "$devwt" "git commit -m x"
+expect 2 "$devwt" "git push"
 
 # The real directory is followed through `cd X &&` and `git -C X`.
 expect 0 "$main_dir" "cd $wt && git switch -c feat/z"

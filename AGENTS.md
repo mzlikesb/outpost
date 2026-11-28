@@ -60,7 +60,7 @@ README·UI·커밋 메시지는 작품 자체로 설명한다.
 - **large 기능은 플랜 승인 뒤 구현을 여러 PR로 나눈다.** 플랜 PR은 문서만 머지하고, 플랜에 "구현 PR 나누기" 표(PR별 내용·의존)를 둔다. 구현 PR 하나는 테스트·에셋을 뺀 **코드 diff 약 800줄 이하**를 목표로 하고, 넘으면 본문에 이유를 적는다(#45·#47이 플랜·구현·수정을 한 PR에 담아 리뷰가 어려웠다)
 - **마일스톤에 읽을 상태를 늘리기 전에, 있는 상호작용의 손맛을 먼저 본다**(경험 원칙 4의 제작 쪽 기준). 한 마일스톤에 새로 늘리는 상태 종류는 **2개까지**로 하고, 넘으면 플랜에 이유를 적는다(#47이 센서·가동 시간·정전 배너·기록 패널로 상태 4종을 한 번에 늘려 "숫자의 뜻"·"첫 1분 할 일 없음" 지적을 받았다)
 - **small은 플랜 문서·`tasks.md`·QA 리포트를 생략**하고 `stage:code-review`로 시작한다. 변경 이유와 검증 결과는 PR 본문에 쓴다. 쓰다가 커지면 large로 바꾸고 플랜부터 쓴다
-- 머지는 등급과 관계없이 **squash**로 한다(검증용 임시 커밋이 main에 남지 않는다)
+- PR 머지는 등급과 관계없이 **squash**로 한다(검증용 임시 커밋이 main에 남지 않는다). 예외는 `dev → main` 릴리스 PR과 실수 squash 뒤 `main → dev` 복구 PR로, 둘은 **merge commit**으로 머지한다(플랜 010 C, tasks R1c)
 - 훅(`scripts/hooks/guard-bash.sh`)은 실수 방지 장치다. 같은 사용자 계정을 쓰므로 보안 경계가 아니다. 우회하지 않는다. **훅 규칙은 더 늘리지 않는다**(정규식 파싱의 한계). 진짜 잠금은 서버 쪽(브랜치 보호, Approve 필수)이다
 - 메인 체크아웃 안의 파일은 Write·Edit 도구로도 고칠 수 없다(`scripts/hooks/guard-write.sh`). 하네스 파일(`.claude/`, `scripts/hooks/`, `.github/`, `AGENTS.md`)을 바꾸려면 worktree에서 PR로 바꾸고 사용자 Approve를 받는다
 - 훅은 명령 문장 전체가 아니라 **해석한 명령 구간**(`&&`·`;`·`|`로 나눈 뒤 앞의 `VAR=값`·괄호를 벗긴 것)만 검사한다. 따옴표 안의 구분자까지 해석하지는 않으므로, 커밋 메시지에 `; GH_TOKEN=x` 같은 글자를 넣으면 막힐 수 있다(그럴 땐 메시지를 파일로 넘긴다)
@@ -105,16 +105,42 @@ README·UI·커밋 메시지는 작품 자체로 설명한다.
 
 목표 범위: 정상 경로는 서버가 검증하고, 계정을 바꾸려는 시도는 훅이 막는다. 사용자 컴퓨터에 `mzlikesb` 토큰이 있으므로 완전한 격리는 아니다.
 
-- 브랜치 보호(main): 필수 체크 `ci`·`pr-check`·`actionlint`(게이트를 만드는 워크플로 파일을 지키는 체크, #75), 필수 상태 `codex-reviewed`, Approve 1개 필수, 새 커밋 시 기존 Approve 해제, 마지막 push도 승인 필요, `enforce_admins` 켬(`--admin` 머지·main 직접 push 거절), squash만 허용
+- 브랜치 보호(main): 필수 체크 `ci`·`pr-check`·`actionlint`(게이트를 만드는 워크플로 파일을 지키는 체크, #75), 필수 상태 `codex-reviewed`, Approve 1개 필수, 새 커밋 시 기존 Approve 해제, 마지막 push도 승인 필요, `enforce_admins` 켬(`--admin` 머지·main 직접 push 거절). 저장소 머지 방식은 squash와 merge commit 허용, rebase 끔(merge commit은 `dev → main` 릴리스 PR과 `main → dev` 복구 PR 전용, 플랜 010 C)
+- 브랜치 보호(dev, 통합 브랜치, 플랜 010 A): PR 필수, 필수 Approve 0, **코드 주인 리뷰 필수**(아래 보호 경로), 새 커밋 시 기존 Approve 해제, 필수 체크 `ci`·`pr-check`·`actionlint`·`codex-reviewed-dev`, `enforce_admins` 켬, 강제 push·삭제 금지. 저장소 변수 `DEV_FLOW`가 `on`이면 `pr-check`가 dev·릴리스 규칙을 적용한다(`scripts/pr-check.sh`)
 - **승인 = 사용자의 GitHub Approve.** 에이전트 계정은 작성자라 자기 PR을 Approve할 수 없다(서버가 막음)
 - small: 에이전트가 PR을 ready로 열면서 `gh pr merge --auto --squash`로 예약한다 → 사용자가 Approve하면 체크 통과 후 자동 머지
 - large: 사용자가 Approve 후 직접 머지. 에이전트의 `gh pr merge`는 `--auto`(small만)와 `--disable-auto`만 훅이 허용한다
-- **`codex-reviewed` 상태(`.github/workflows/codex-gate.yml`)**: PR의 현재 head SHA를 Codex가 리뷰했을 때만 success다(영수증 또는 요약 state가 head와 일치). Approve가 먼저 들어가도 이 상태가 초록이 될 때까지 머지되지 않는다. 문서만 바뀐 PR도 같다. 판정 스크립트는 항상 기본 브랜치 것을 쓴다. 다만 워크플로 정의는 pull_request에서 PR 브랜치 것이 쓰이므로 `.github` 변경은 사용자 Approve로 지킨다. 새 커밋을 push하면 pending으로 돌아가므로 `@codex review`를 다시 요청한다
+- **`codex-reviewed` 상태(`.github/workflows/codex-gate.yml`)**: PR의 현재 head SHA를 Codex가 리뷰했을 때만 success다(영수증 또는 요약 state가 head와 일치). Approve가 먼저 들어가도 이 상태가 초록이 될 때까지 머지되지 않는다. 문서만 바뀐 PR도 같다. 판정 스크립트는 항상 기본 브랜치 것을 쓴다. 다만 워크플로 정의는 pull_request에서 PR 브랜치 것이 쓰이므로 `.github` 변경은 사용자 Approve로 지킨다. 새 커밋을 push하면 pending으로 돌아가므로 `@codex review`를 다시 요청한다. base가 `dev`인 PR은 같은 판정에 "최신 Codex 리뷰에 지적 없음, 또는 리뷰 뒤 사용자 Approve"를 더한 결과를 **`codex-reviewed-dev`** 상태로 따로 올린다(상태는 SHA 단위라, 같은 head의 다른 base PR이 덮어쓰지 못하게)
 - **Codex가 최종 커밋 리뷰를 마치면 에이전트가 PR에 "Approve·머지 가능" 코멘트를 단다.** 사용자는 그 코멘트를 보고 Approve한다(Approve가 Codex보다 먼저 들어가 리뷰 전에 머지된 일이 #8·#11에서 있었다)
 - small → large 전환: **auto-merge 예약을 먼저 해제한 뒤** 라벨을 바꾼다(`pr-check`가 large + 예약 켜짐을 실패로 본다)
 - **사용자는 에이전트 PR 브랜치에 직접 push하지 않는다**(웹의 "Update branch"·"Apply suggestion" 포함). 마지막 push가 `mzlikesb`면 아무도 Approve할 수 없게 된다. 실수했으면 에이전트가 브랜치를 다시 push(빈 커밋 등)해 마지막 pusher를 에이전트 계정으로 되돌린다
 - **모든 PR은 에이전트 계정으로 연다.** 사용자가 직접 연 PR은 본인 Approve가 안 되므로, 긴급할 때만 사용자가 **`enforce_admins`만** 잠시 끄고 머지한 뒤 다시 켠다. 브랜치 보호 전체를 끄지 않는다
-- 브랜치 보호 실제 값은 `scripts/check-protection.sh`로 이 절의 주장과 대조하고, 마일스톤 종료와 회고 PR마다 doc-lint가 돌린다(#60, #74)
+- 브랜치 보호 실제 값은 `scripts/check-protection.sh`로 이 절의 주장과 대조하고(`main`·`dev` 보호, 머지 방식, `DEV_FLOW` 값 표시), 마일스톤 종료와 회고 PR마다 doc-lint가 돌린다(#60, #74)
+
+### 보호 경로 (CODEOWNERS)
+
+아래 경로를 바꾸는 PR은 코드 주인(`@mzlikesb`) Approve가 있어야 머지된다(`.github/CODEOWNERS`). `dev`는 필수 Approve가 0이라, 하네스·검사·빌드 설정을 small PR로 약하게 만드는 길을 이것으로 막는다. `/`로 시작하는 경로는 저장소 루트 기준이고, `**/`는 어느 폴더에서든 같은 이름이다(하위 폴더의 검사 설정이 상위 설정을 덮는 것을 막는다). 목록과 CODEOWNERS는 `scripts/codeowners.test.sh`가 대조한다. 루트에 새 파일이 생기면 이 목록에 넣거나 테스트의 비보호 목록에 넣는다.
+
+<!-- protected-paths:start -->
+- `/.github/`
+- `/scripts/`
+- `/AGENTS.md`
+- `/CLAUDE.md`
+- `/GEMINI.md`
+- `/.claude/`
+- `/docs/templates/`
+- `/wrangler.*`
+- `/package.json`
+- `/package-lock.json`
+- `/.nvmrc`
+- `/tsconfig*.json`
+- `/vite.config.*`
+- `/vitest.config.*`
+- `/vitest.workspace.*`
+- `**/.oxlintrc*`
+- `**/.prettierrc*`
+- `**/.prettierignore`
+<!-- protected-paths:end -->
 
 ### 에이전트 세션 설정
 

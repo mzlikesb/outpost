@@ -58,11 +58,14 @@ while true; do
 
   head=$(gh pr view "$pr" --repo "$repo" --json headRefOid -q .headRefOid 2>/dev/null || true)
   if [ -n "$head" ]; then
+    # PRs into dev are judged on their own context (plan 010 B2).
+    ctx=codex-reviewed
+    [ "$(gh pr view "$pr" --repo "$repo" --json baseRefName -q .baseRefName 2>/dev/null || true)" = dev ] && ctx=codex-reviewed-dev
     cstate=$(gh api "repos/$repo/commits/$head/status" \
-      --jq '[.statuses[] | select(.context == "codex-reviewed")][0].state // ""' 2>/dev/null || true)
+      --jq "[.statuses[] | select(.context == \"$ctx\")][0].state // \"\"" 2>/dev/null || true)
     if [ "$cstate" = success ] && ! grep -qx "k$head" "$seen"; then
       echo "k$head" >>"$seen"
-      echo "PR#$pr status [codex] head ${head:0:7} 리뷰 완료(codex-reviewed success)"
+      echo "PR#$pr status [codex] head ${head:0:7} 리뷰 완료($ctx success)"
     fi
   fi
 

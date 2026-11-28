@@ -24,7 +24,9 @@ expect mzlikesb '' user
 expect someone-else '## neon review' untrusted
 
 # codex-reviewed status watch: run the script against a fake gh. Each line of the steps
-# file is one poll ("<head sha> <status>"); after the last line the PR reads as MERGED.
+# file is one poll ("<head sha> <status> [context]"); after the last line the PR reads as MERGED.
+# The fake answers a status read only when the script asks for that line's context
+# (default codex-reviewed). FAKE_BASE is the PR's base branch (default main).
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir "$tmp/bin"
@@ -37,9 +39,11 @@ case "$*" in
     n=$((n + 1)); echo "$n" >"$FAKE/n"
     if [ "$n" -gt "$(wc -l <"$FAKE/steps")" ]; then echo MERGED; else echo OPEN; fi ;;
   *headRefOid*) sed -n "${n}p" "$FAKE/steps" | cut -d' ' -f1 ;;
+  *baseRefName*) echo "${FAKE_BASE:-main}" ;;
   *"/status"*)
     st=$(sed -n "${n}p" "$FAKE/steps" | cut -d' ' -f2)
-    [ -n "$st" ] && [ "$st" != none ] && echo "$st" ;;
+    ctx=$(sed -n "${n}p" "$FAKE/steps" | cut -d' ' -f3); ctx=${ctx:-codex-reviewed}
+    case "$*" in *"\"$ctx\""*) [ -n "$st" ] && [ "$st" != none ] && echo "$st" ;; esac ;;
 esac
 GH
 chmod +x "$tmp/bin/gh"
@@ -48,7 +52,7 @@ watch() { # watch <name> <want-count-of-codex-lines> <steps...>
   export FAKE="$tmp/$name"; mkdir -p "$FAKE"; rm -f "$FAKE/n"
   printf '%s\n' "$@" >"$FAKE/steps"
   out=$(PATH="$tmp/bin:$PATH" bash ./watch-pr.sh 7 0 2>&1)
-  got=$(grep -c '\[codex\] head .* 리뷰 완료(codex-reviewed success)' <<<"$out")
+  got=$(grep -cE '\[codex\] head .* 리뷰 완료\(codex-reviewed(-dev)? success\)' <<<"$out")
   if [ "$got" = "$want" ]; then echo "ok   watch $name ($got)"; else echo "FAIL watch $name: $got lines (want $want)"; echo "$out"; fail=1; fi
   WATCH_OUT=$out
 }
@@ -58,4 +62,9 @@ watch pending 1 'aaaaaaa1111 pending' 'aaaaaaa1111 pending' 'aaaaaaa1111 success
 watch dedupe 1 'aaaaaaa1111 success' 'aaaaaaa1111 success' 'aaaaaaa1111 success'
 watch newsha 2 'aaaaaaa1111 success' 'bbbbbbb2222 pending' 'bbbbbbb2222 success' 'bbbbbbb2222 success'
 watch never 0 'aaaaaaa1111 pending' 'aaaaaaa1111 none'
+# base dev: only codex-reviewed-dev counts; base main ignores it.
+FAKE_BASE=dev watch dev-context 1 'aaaaaaa1111 success codex-reviewed-dev'
+grep -q '리뷰 완료(codex-reviewed-dev success)' <<<"$WATCH_OUT" || { echo "FAIL dev context name"; fail=1; }
+FAKE_BASE=dev watch dev-ignores-main-context 0 'aaaaaaa1111 success codex-reviewed'
+watch main-ignores-dev-context 0 'aaaaaaa1111 success codex-reviewed-dev'
 exit $fail

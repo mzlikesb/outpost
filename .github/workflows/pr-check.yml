@@ -15,6 +15,8 @@ on:
       - converted_to_draft
       - auto_merge_enabled
       - auto_merge_disabled
+  pull_request_review:
+    types: [submitted, dismissed]
 
 permissions:
   pull-requests: read
@@ -27,63 +29,54 @@ concurrency:
   group: pr-check-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
-# Approval is GitHub's own review (branch protection), not a label. This check only
-# validates the PR's metadata and that large PRs are never queued for auto-merge.
+# Approval is GitHub's own review (branch protection), not a label. This check validates the
+# PR's metadata and that large PRs are never queued for auto-merge. With the repo variable
+# DEV_FLOW=on it also applies the dev/release rules (plan 010 C): only release/* snapshots of
+# dev go to main, and a size:large PR into dev needs the user's Approve on its head. Reviews
+# re-run the check, so an Approve or a dismissal updates it.
 
 jobs:
   pr-check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Validate PR body, labels, milestone, auto-merge
+      # The default branch's rules, so a PR cannot loosen its own check. Before
+      # scripts/pr-check.sh first reaches the default branch, the PR's copy is used once.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts/pr-check.sh
+          sparse-checkout-cone-mode: false
+          path: judge
+      - if: hashFiles('judge/scripts/pr-check.sh') == ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/pr-check.sh
+          sparse-checkout-cone-mode: false
+          path: judge
+      - name: Validate PR body, labels, milestone, auto-merge, approval
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          DEV_FLOW: ${{ vars.DEV_FLOW }}
         run: |
           set -euo pipefail
           # Re-read the current PR; the event payload may be stale.
           gh api "repos/$REPO/pulls/$PR" > pr.json
-          errors=()
-
-          # 1) "- 관련 이슈:" line
-          line=$(jq -r '.body // ""' pr.json | tr -d '\r' | grep -m1 -E '^- 관련 이슈:' || true)
-          if [ -z "$line" ]; then
-            errors+=("PR 본문에 '- 관련 이슈:' 줄이 없습니다.")
+          gh api --paginate "repos/$REPO/pulls/$PR/reviews?per_page=100" | jq -s 'add // []' > reviews.json
+          compare=""
+          if [ "${DEV_FLOW:-}" = on ] && [ "$(jq -r .base.ref pr.json)" = main ]; then
+            # behind/identical: the head commit is already in dev's history.
+            compare=$(gh api "repos/$REPO/compare/dev...$(jq -r .head.sha pr.json)" --jq .status 2>/dev/null || true)
+          fi
+          echo "DEV_FLOW=${DEV_FLOW:-} compare=${compare:-}"
+          if out=$(bash judge/scripts/pr-check.sh pr.json reviews.json "${DEV_FLOW:-}" "$compare"); then
+            echo "$out"
           else
-            value="${line#- 관련 이슈:}"
-            value="$(echo "$value" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
-            if [ "$value" = "없음" ]; then
-              :
-            elif echo "$value" | grep -qE '(Closes|Refs|Fixes) #[0-9]+'; then
-              :
-            else
-              errors+=("'관련 이슈' 값은 '없음' 이거나 'Closes #N' / 'Refs #N' / 'Fixes #N' 이어야 합니다. (현재: ${value:-빈 값})")
-            fi
-          fi
-
-          # 2) exactly one size:* and one stage:* label
-          size_count=$(jq '[.labels[].name | select(startswith("size:"))] | length' pr.json)
-          stage_count=$(jq '[.labels[].name | select(startswith("stage:"))] | length' pr.json)
-          [ "$size_count" -eq 1 ] || errors+=("size:* 라벨이 정확히 1개여야 합니다. (현재 ${size_count}개; size:small 또는 size:large)")
-          [ "$stage_count" -eq 1 ] || errors+=("stage:* 라벨이 정확히 1개여야 합니다. (현재 ${stage_count}개)")
-
-          # 3) milestone
-          if [ "$(jq '.milestone == null' pr.json)" = "true" ]; then
-            errors+=("마일스톤이 설정되어 있지 않습니다.")
-          fi
-
-          # 4) large PRs are merged by the user, never queued for auto-merge
-          large=$(jq '[.labels[].name] | index("size:large") != null' pr.json)
-          auto_on=$(jq '.auto_merge != null' pr.json)
-          if [ "$large" = true ] && [ "$auto_on" = true ]; then
-            errors+=("size:large PR에 auto-merge가 예약되어 있습니다. large는 사용자가 직접 머지합니다. 예약을 해제하세요(gh pr merge --disable-auto).")
-          fi
-
-          if [ "${#errors[@]}" -gt 0 ]; then
-            for e in "${errors[@]}"; do
-              echo "::error::$e"
-            done
+            while IFS= read -r e; do echo "::error::$e"; done <<<"$out"
             exit 1
           fi
-          echo "pr-check passed"

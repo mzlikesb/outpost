@@ -1,7 +1,7 @@
 # 010 — 작업 목록
 
 - 플랜: `docs/plans/010-dev-branch.md`
-- 상태: 플랜 리뷰 이관 항목만 있다. 작업 분할은 개발 리드가 플랜 승인 뒤 채운다.
+- 상태: 010-1 구현 중. 010-2 작업은 010-1 머지 뒤 채운다.
 
 ## 플랜 리뷰에서 넘어온 항목
 
@@ -29,6 +29,7 @@
 - base `dev` PR의 `codex-reviewed` success 조건은 두 경로다.
   - (a) head SHA에 대한 **가장 최근** Codex 리뷰에 인라인 지적이 0건이고, 그 리뷰의 요약(또는 Codex 요약 코멘트)이 "지적 없음" 문구다(`Didn't find any major issues` 계열). 예전 리뷰의 지적은 보지 않는다.
   - (b) **탈출구**: head SHA에 대한 Codex 리뷰가 **끝나 있고**(결과 무관), 같은 head에 사용자(`mzlikesb`)의 APPROVED 리뷰가 있다. 오탐이나 경미한 지적을 코드 수정 없이 넘길 때 쓴다. Codex 리뷰가 아직 없는 head에서는 사용자 Approve만으로 통과하지 않는다(Codex P1 `6d4e815` — 사용자 Approve가 Codex 리뷰를 건너뛰는 길이 되지 않게).
+    - **Codex 결과보다 뒤의 Approve만 센다**: 사용자 APPROVED는 head에 대한 가장 최근 Codex 결과(리뷰 `submitted_at`·영수증 `created_at`·요약 코멘트 `updated_at` 중 최신)보다 엄격히 뒤여야 한다. 같은 시각은 pending(닫힌 쪽). 그 뒤 사용자 결정 리뷰가 CHANGES_REQUESTED·DISMISSED면 무효(Codex P1 `c3ea36b`).
 - 요약 본문에만 막는 문제를 적고 인라인이 없는 경우는 (a)의 요약 문구 조건이 걸러 낸다.
 - 기획이 지적을 "막지 않음"으로 판단하면 PR 코멘트에 근거를 남기고 사용자에게 (b)를 요청한다. 같은 head로 재리뷰를 요청해 통과시키려 하지 않는다.
 - 판정 스크립트는 계속 기본 브랜치(`main`)의 것을 쓴다.
@@ -37,3 +38,31 @@
 ### R3. 이미 반영된 neon 3턴 지적 (확인만)
 
 - 3(훅 변경 010-1로), 4(CODEOWNERS `scripts/**`·검사 설정), 5(릴리스 중 `dev` 경합 → `release/*` 스냅샷 브랜치)는 `03382fe`에 반영됐다. 010-1·010-2 구현이 플랜의 이 절들을 따르는지 QA가 확인한다.
+
+## 010-1 작업
+
+순차로 한 worktree(`chore/010-1-dev-foundations`)에서 했다. 테스트를 먼저 쓰고 구현했다.
+
+| #   | 작업                                                                                                          | 담당      | 완료 조건                                                                                                                                         | 테스트                                          | 상태 |
+| --- | ------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ---- |
+| 1   | `.github/CODEOWNERS` + `AGENTS.md` "보호 경로" 목록                                                           | 개발 리드 | 두 목록이 같고 주인이 `@mzlikesb`뿐, 추적되는 루트 항목은 보호되거나 테스트의 비보호 목록에 있다                                                  | `scripts/codeowners.test.sh`                    | 완료 |
+| 2   | `codex-gate`: base `dev`는 R2 (a)·(b), 나머지 base는 지금 판정. 워크플로가 base·인라인 지적을 넘긴다          | 개발 리드 | R2 테스트 목록 전부 + 인라인 목록 없음 → pending(닫힌 쪽 실패). 옛 3인자 호출은 main 판정                                                         | `scripts/codex-gate.test.sh`                    | 완료 |
+| 3   | `pr-check` 로직을 `scripts/pr-check.sh`로 빼고 `DEV_FLOW=on` 규칙(C·R1·R1c) 추가, 리뷰 트리거                 | 개발 리드 | 꺼짐은 지금 규칙(010-1 자신 통과), 켜짐은 릴리스·dev small/large·복구 PR 규칙. 판정 스크립트는 기본 브랜치 것(처음 한 번만 PR 것)                 | `scripts/pr-check.test.sh`                      | 완료 |
+| 4   | `ci.yml` push에 `dev`, PR 트리거에 브랜치 제한 없음 확인, cleanup이 `pr-N`만 지움                             | 개발 리드 | 워크플로 파일에서 사실을 읽는 테스트 통과                                                                                                         | `scripts/workflows.test.sh`                     | 완료 |
+| 5   | `check-protection.sh`: `dev` 보호·`main` merge commit 허용 대조, `DEV_FLOW` 표시                               | 개발 리드 | 픽스처·가짜 gh로 `dev` 없음/보호 없음/값 차이/읽기 금지를 구분                                                                                    | `scripts/check-protection.test.sh`              | 완료 |
+| 6   | `guard-bash.sh`: `main` 직접 push·`main`에서 commit/push 금지 규칙의 대상에 `dev` 추가(`--auto` 조건은 그대로) | 개발 리드 | `dev`·`HEAD:dev`·`refs/heads/dev`·`main:dev` 거절, `dev-xyz` 허용, `dev` worktree에서 commit/push 거절                                            | `scripts/hooks/guard-bash.test.sh`              | 완료 |
+| 7   | `release` 라벨                                                                                                | 개발 리드 | `gh label list`에 있다                                                                                                                            | —                                               | 완료 |
+
+### 010-1 QA 반려 반영 (#129 QA 코멘트)
+
+- codex-gate `pull_request`에 `edited`(base를 `dev`로 바꿔도 다시 판정), 인라인 목록은 인자 대신 파일로(255KB 입력 테스트)
+- R1c 복구 예외는 head가 같은 저장소일 때만(포크의 `main` 제외)
+- CODEOWNERS·`AGENTS.md`의 `.oxlintrc*`·`.prettierrc*`·`.prettierignore`는 `**/`로 하위 폴더까지
+- `workflows.test.sh`: `edited` 트리거, actionlint가 `ci.yml` job, 판정 스크립트를 기본 브랜치에서 checkout
+- `check-protection.sh`: `DEV_FLOW` 404는 "없음", 그 밖의 실패는 "읽지 못함"
+- `AGENTS.md`: PR은 squash, `dev → main` 릴리스·`main → dev` 복구는 merge commit
+- 남김: `pr-check`의 부트스트랩 fallback 제거는 010-2
+
+### 010-1 Codex P1 반영 (#129 `e146b2a`, `codex-gate.jq:39`)
+
+- commit status는 SHA 단위라, base `dev` 판정은 **`codex-reviewed-dev`** 컨텍스트로 따로 올린다(base `main`·그 밖은 `codex-reviewed`). `dev` 보호의 필수 체크는 `ci`·`pr-check`·`actionlint`·`codex-reviewed-dev`(플랜 A.2의 `codex-reviewed`를 대신한다). `check-protection.sh`·`AGENTS.md`·`watch-pr.sh`도 같이 맞췄다
